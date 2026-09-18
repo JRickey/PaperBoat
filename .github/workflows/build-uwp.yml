@@ -33,7 +33,7 @@ jobs:
         with:
           path: |
             vcpkg
-            build-windows
+            build-windows-uwp
           key: ${{ runner.os }}-vs2022-paperboat-uwp-${{ hashFiles('CMakeLists.txt', 'cmake/**', 'src/**', 'external/libultraship/**', 'external/torch/**') }}
           restore-keys: |
             ${{ runner.os }}-vs2022-paperboat-uwp-
@@ -43,11 +43,11 @@ jobs:
         env:
           VCPKG_ROOT: ${{ github.workspace }}/vcpkg
         run: |
-          cmake -S . -B build-windows -G Ninja `
-            -DCMAKE_TOOLCHAIN_FILE=cmake/toolchains/windows-clang-cl.cmake `
-            -DPAPERBOAT_UWP=ON `
-            -DCMAKE_BUILD_TYPE=Release
-          cmake --build build-windows --parallel 10
+          cmake -S . -B build-windows-uwp -G "Ninja" `
+            "-DCMAKE_TOOLCHAIN_FILE=${{ github.workspace }}/cmake/toolchains/windows-clang-cl.cmake" `
+            "-DPAPERBOAT_UWP=ON" `
+            "-DCMAKE_BUILD_TYPE=Release"
+          cmake --build build-windows-uwp --parallel 10
 
       - name: Save native dependencies and objects
         if: always() && steps.native-cache.outputs.cache-hit != 'true'
@@ -55,14 +55,14 @@ jobs:
         with:
           path: |
             vcpkg
-            build-windows
+            build-windows-uwp
           key: ${{ steps.native-cache.outputs.cache-primary-key }}
 
       - name: Configure UWP package
         shell: pwsh
         run: |
           cmake -S uwp -B build-uwp -G "Visual Studio 17 2022" -A x64 `
-            -DPAPERBOAT_BUILD_DIR="${{ github.workspace }}/build-windows" `
+            -DPAPERBOAT_BUILD_DIR="${{ github.workspace }}/build-windows-uwp" `
             -DPAPERBOAT_PACKAGE_VERSION="1.0.${{ github.run_number }}.0"
 
       - name: Build and sign MSIX bundle
