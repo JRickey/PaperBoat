@@ -99,13 +99,6 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-vs2022-paperboat-uwp-
 
-      - name: Upload restored native debug symbols
-        uses: actions/upload-artifact@v4
-        with:
-          name: Paper-Boat-UWP-symbols
-          if-no-files-found: error
-          path: build-windows-uwp/PaperBoat.pdb
-
       - name: Build Paper Boat native DLL
         shell: pwsh
         env:
@@ -116,6 +109,13 @@ jobs:
             "-DPAPERBOAT_UWP=ON" `
             "-DCMAKE_BUILD_TYPE=Release"
           cmake --build build-windows-uwp --parallel 10
+
+      - name: Upload native debug symbols
+        uses: actions/upload-artifact@v4
+        with:
+          name: Paper-Boat-UWP-symbols
+          if-no-files-found: error
+          path: build-windows-uwp/PaperBoat.pdb
 
       - name: Save native dependencies and objects
         if: always() && steps.native-cache.outputs.cache-hit != 'true'

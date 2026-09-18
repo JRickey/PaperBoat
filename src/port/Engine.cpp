@@ -195,7 +195,10 @@ static bool AnyRomArchiveExists() {
 }
 
 GameEngine::GameEngine() {
-    const std::string assets_path = LocatePaperBoatFile("paperboat.o2r");
+    // This lookup intentionally happens before the Context singleton exists.
+    // Pass the short name explicitly so NON_PORTABLE builds do not try to read
+    // it from a null Context while resolving the writable app directory.
+    const std::string assets_path = LocatePaperBoatFile("paperboat.o2r", "boat");
     portArchiveExists = std::filesystem::exists(assets_path);
 
 #if defined(_WIN32) && defined(_DEBUG)
