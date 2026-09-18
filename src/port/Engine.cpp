@@ -437,7 +437,13 @@ void GameEngine::RunExtract(int argc, char* argv[]) {
         switch (extractStep) {
             case ES_PORT_ARCHIVE: {
                 if (portArchiveExists) {
-#ifdef _WIN32
+#ifdef PAPERBOAT_UWP
+                    // Packaged apps run from a read-only install directory and
+                    // write through LocalState. Desktop TEMP/current-directory/
+                    // OneDrive checks below are inapplicable and can dereference
+                    // environment variables that UWP does not provide.
+                    extractStep = args.empty() ? ES_EXTRACT : ES_EXTRACT_ARGS;
+#elif defined(_WIN32)
                     extractStep = ES_WINDOWS;
 #else
                     // Command-line ROMs should enter the same deterministic
