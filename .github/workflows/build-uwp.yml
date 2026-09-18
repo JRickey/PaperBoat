@@ -145,3 +145,10 @@ jobs:
             build-uwp/AppPackages/**/*.msix
             build-uwp/AppPackages/**/*.appx
             build-uwp/AppPackages/**/*.cer
+
+      - name: Upload native debug symbols
+        uses: actions/upload-artifact@v4
+        with:
+          name: Paper-Boat-UWP-symbols
+          if-no-files-found: error
+          path: build-windows-uwp/PaperBoat.pdb
