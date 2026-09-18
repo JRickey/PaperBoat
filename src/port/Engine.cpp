@@ -112,6 +112,18 @@ extern Gfx* gMainGfxPos;
 static bool portArchiveExists = false;
 static const std::vector<std::string> sRomArchives = { "pm64.o2r" };
 
+static std::string LocatePaperBoatFile(const std::string& path, const std::string& appName = "") {
+#ifdef PAPERBOAT_UWP
+    // Keep large ROM-derived assets and optional mods on removable storage.
+    // Configuration and saves still use the package's writable LocalState.
+    const std::filesystem::path usbPath = std::filesystem::path("E:/PaperBoat") / path;
+    if (std::filesystem::exists(usbPath)) {
+        return usbPath.generic_string();
+    }
+#endif
+    return Ship::Context::LocateFileAcrossAppDirs(path, appName);
+}
+
 typedef enum ExtractSteps {
     ES_PORT_ARCHIVE,
     ES_WINDOWS,
@@ -160,7 +172,7 @@ static bool PathTestCleanup(FILE* tfile) {
 
 static void CheckAndCreateModFolder() {
     try {
-        std::string modsPath = Ship::Context::LocateFileAcrossAppDirs("mods", "boat");
+        std::string modsPath = LocatePaperBoatFile("mods", "boat");
         if (!std::filesystem::exists(modsPath)) {
             modsPath = Ship::Context::GetPathRelativeToAppDirectory("mods", "boat");
             std::string filePath = modsPath + "/custom_mod_files_go_here.txt";
@@ -175,7 +187,7 @@ static void CheckAndCreateModFolder() {
 
 static bool AnyRomArchiveExists() {
     for (const auto& archive : sRomArchives) {
-        if (std::filesystem::exists(Ship::Context::LocateFileAcrossAppDirs(archive))) {
+        if (std::filesystem::exists(LocatePaperBoatFile(archive))) {
             return true;
         }
     }
@@ -183,7 +195,7 @@ static bool AnyRomArchiveExists() {
 }
 
 GameEngine::GameEngine() {
-    const std::string assets_path = Ship::Context::LocateFileAcrossAppDirs("paperboat.o2r");
+    const std::string assets_path = LocatePaperBoatFile("paperboat.o2r");
     portArchiveExists = std::filesystem::exists(assets_path);
 
 #if defined(_WIN32) && defined(_DEBUG)
@@ -198,6 +210,12 @@ GameEngine::GameEngine() {
     this->context->InitLogging();
     this->context->InitConfiguration();
     this->context->InitConsoleVariables();
+
+#ifdef PAPERBOAT_UWP
+    // Xbox has no keyboard fallback. Keep the View/Back-button menu path and
+    // ImGui navigation available from the first launch.
+    CVarSetInteger(CVAR_IMGUI_CONTROLLER_NAV, 1);
+#endif
 
     this->context->InitControlDeck(std::make_shared<LUS::ControlDeck>());
     this->context->InitResourceManager(
@@ -238,13 +256,13 @@ void GameEngine::FinishInit() {
     auto archiveManager = Ship::Context::GetRawInstance()->GetResourceManager()->GetArchiveManager();
 
     for (const auto& archive : sRomArchives) {
-        const auto romPath = Ship::Context::LocateFileAcrossAppDirs(archive);
+        const auto romPath = LocatePaperBoatFile(archive);
         if (std::filesystem::exists(romPath)) {
             archiveManager->AddArchive(romPath);
         }
     }
 
-    const std::string hd_path = Ship::Context::GetPathRelativeToAppDirectory("paperboat-hd.o2r");
+    const std::string hd_path = LocatePaperBoatFile("paperboat-hd.o2r");
     if (std::filesystem::exists(hd_path)) {
         SPDLOG_INFO("Loading HD asset archive: paperboat-hd.o2r");
         archiveManager->AddArchive(hd_path);
@@ -419,7 +437,11 @@ void GameEngine::RunExtract(int argc, char* argv[]) {
 #ifdef _WIN32
                     extractStep = ES_WINDOWS;
 #else
-                    extractStep = ES_EXTRACT;
+                    // Command-line ROMs should enter the same deterministic
+                    // extraction path on every desktop platform. Previously
+                    // only Windows advanced to ES_EXTRACT_ARGS, so Linux and
+                    // macOS ignored argv and opened a file picker instead.
+                    extractStep = args.empty() ? ES_EXTRACT : ES_EXTRACT_ARGS;
 #endif
                 } else {
                     PaperboatGui::RegisterPopup(

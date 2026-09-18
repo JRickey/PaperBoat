@@ -3,7 +3,12 @@
 #include <libultraship.h>
 
 #include "Engine.h"
+#include "port/extractor/GameExtractor.h"
 #include "port/interpolation/FrameInterpolation.h"
+
+#include <atomic>
+#include <filesystem>
+#include <string_view>
 
 #ifdef __EMSCRIPTEN__
 #include <SDL2/SDL.h>
@@ -37,6 +42,29 @@ extern "C"
 #endif
     int main(int argc, char* argv[]) {
 #endif
+    if (argc == 4 && std::string_view(argv[1]) == "--extract-to") {
+        const std::filesystem::path outputDirectory = argv[3];
+        std::error_code error;
+        std::filesystem::create_directories(outputDirectory, error);
+        if (error) {
+            return 2;
+        }
+
+        const std::string bundlePath = Ship::Context::GetAppBundlePath();
+        GameExtractor extractor;
+        if (!extractor.RunStandalone(argv[2], bundlePath)) {
+            return 3;
+        }
+
+        std::atomic<size_t> extractedAssets { 0 };
+        std::atomic<size_t> totalAssets { 0 };
+        return extractor.GenerateOTRTo(
+                   extractedAssets, totalAssets, bundlePath, outputDirectory.generic_string()
+               )
+            ? 0
+            : 4;
+    }
+
 #ifdef __EMSCRIPTEN__
     // Everything the engine writes lives under /storage, an IndexedDB mount.
     // Both calls must precede anything that looks for a file there.

@@ -7,6 +7,18 @@ project(Paperboat
     DESCRIPTION "PM64"
 )
 
+option(PAPERBOAT_UWP "Build the native DLL used by the Xbox/UWP wrapper" OFF)
+
+if(PAPERBOAT_UWP)
+    if(NOT CMAKE_SYSTEM_NAME STREQUAL "Windows")
+        message(FATAL_ERROR "PAPERBOAT_UWP requires a Windows x64 host build")
+    endif()
+    set(NON_PORTABLE ON CACHE BOOL "Store writable data in platform app storage" FORCE)
+    set(ENABLE_SCRIPTING OFF CACHE BOOL "UWP cannot provide executable-memory scripting" FORCE)
+    set(DISABLE_DLL_LOADER ON CACHE BOOL "UWP cannot load unpackaged DLL mods" FORCE)
+    add_compile_definitions(_UWP=1 PAPERBOAT_UWP=1)
+endif()
+
 set(CMAKE_C_STANDARD 99)
 set(CMAKE_C_EXTENSIONS ON)  # Enable GNU extensions (gnu99)
 set(CMAKE_CXX_STANDARD 20)
@@ -131,7 +143,12 @@ if (WIN32)
     set(VCPKG_TRIPLET x64-windows-static)
     set(VCPKG_TARGET_TRIPLET x64-windows-static)
     vcpkg_bootstrap()
-    vcpkg_install_packages(zlib bzip2 sdl2 glew libzip nlohmann-json tinyxml2 spdlog)
+    if(PAPERBOAT_UWP)
+        # SDL2 is supplied by uwp-dep for the CoreWindow bridge.
+        vcpkg_install_packages(zlib bzip2 glew libzip nlohmann-json tinyxml2 spdlog)
+    else()
+        vcpkg_install_packages(zlib bzip2 sdl2 glew libzip nlohmann-json tinyxml2 spdlog)
+    endif()
 
     set_property(DIRECTORY ${CMAKE_SOURCE_DIR} PROPERTY VS_STARTUP_PROJECT ${PROJECT_NAME})
 endif()
@@ -215,6 +232,15 @@ endif()
 if(ANDROID OR IOS OR EMSCRIPTEN)
     set(ENABLE_SCRIPTING OFF CACHE BOOL "" FORCE)
     set(DISABLE_DLL_LOADER ON CACHE BOOL "" FORCE)
+endif()
+
+# Xbox/UWP uses the CoreWindow-aware SDL and libuwp imports from uwp-dep.
+if(PAPERBOAT_UWP)
+    FetchContent_Declare(UwpLibs
+        GIT_REPOSITORY https://github.com/worleydl/uwp-dep.git
+        GIT_TAG 0ec87d2406b47743772e2787654275a6f6c0e284
+    )
+    FetchContent_MakeAvailable(UwpLibs)
 endif()
 
 # Add libultraship BEFORE setting include directories to avoid polluting its builds.
@@ -345,6 +371,17 @@ elseif(ANDROID)
         ${PORT_SOURCES}
     )
     set_target_properties(${PROJECT_NAME} PROPERTIES OUTPUT_NAME "main")
+elseif(PAPERBOAT_UWP)
+    # The UWP CoreApplication executable is a small wrapper in uwp/. Export
+    # SDL_main from a native DLL so SDL_WinRTRunApp can start the game.
+    add_library(${PROJECT_NAME} SHARED
+        ${GAME_SOURCES}
+        ${PORT_SOURCES}
+    )
+    set_target_properties(${PROJECT_NAME} PROPERTIES
+        OUTPUT_NAME "PaperBoat"
+        WINDOWS_EXPORT_ALL_SYMBOLS TRUE
+    )
 else()
     add_executable(${PROJECT_NAME}
         ${GAME_SOURCES}
@@ -472,6 +509,10 @@ add_custom_target(GeneratePortO2R DEPENDS "${PAPERBOAT_PORT_O2R}")
 add_dependencies(${PROJECT_NAME} GeneratePortO2R)
 
 target_link_libraries(${PROJECT_NAME} PRIVATE libultraship torch yaml-cpp)
+
+if(PAPERBOAT_UWP)
+    target_link_libraries(${PROJECT_NAME} PRIVATE SDL2 LIBUWP GLFW3)
+endif()
 
 if(ANDROID)
     # libzip comes from libultraship's android.cmake, so its headers are in the

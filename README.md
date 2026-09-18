@@ -80,6 +80,8 @@ If you're interested in creating and/or packing your own custom asset `.o2r`/`.o
 
 If you want to manually compile PaperBoat, please consult the [building instructions](docs/BUILDING.md).
 
+Xbox Developer Mode builds and USB setup are documented in [docs/UWP.md](docs/UWP.md).
+
 <a href="https://github.com/Kenix3/libultraship/">
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="./docs/poweredbylus.darkmode.png">

@@ -1,0 +1,9 @@
+Paper Boat for Xbox Developer Mode (US ROM only)
+
+1. Install the signed MSIX bundle and its certificate through Xbox Device Portal.
+2. Generate pm64.o2r from a legally dumped US Paper Mario ROM.
+3. Copy pm64.o2r to E:\PaperBoat\pm64.o2r on the Xbox USB drive.
+4. Launch Paper Boat. Press the Xbox View/Back button to open the port menu.
+
+Writable configuration and saves use the app's LocalState. Optional mods and
+paperboat-hd.o2r can be placed under E:\PaperBoat.
