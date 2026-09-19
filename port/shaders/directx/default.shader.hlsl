@@ -86,7 +86,8 @@ SamplerState g_samplerPal : register(s6);
 // 256-entry palette texture. bank is the CI4 bank entry offset.
 float4 paletteTap(in Texture2D tex, in SamplerState tSampler, in float2 uv, in float bank) {
     float idx = tex.Sample(tSampler, uv).r;
-    return g_texturePal.Sample(g_samplerPal, float2((idx * 255.0 + bank + 0.5) / 256.0, 0.5));
+    uint paletteIndex = min((uint)round(saturate(idx) * 255.0 + bank), 255u);
+    return g_texturePal.Load(int3(paletteIndex, 0, 0));
 }
 
 // Filtering happens after the palette lookup, like real hardware:
@@ -572,28 +573,11 @@ PSOutput PSMain(PSInput input, float4 screenSpace : SV_Position) {
         texel = applyRdpDither(texel, lod_params.w, screenSpace.xy, noise_scale, noise_frame);
     @end
 
-    // Diagnostic mode: alpha > 1.5 visualizes the raw CI8 index fetch without
-    // consulting the palette. Normal HD-replacement tint uses alpha 0..1.
-    @if(o_palette[0])
-    if (debug_tint.a > 1.5) {
-        float rawIndex = g_texture0.Sample(g_sampler0, tc0).r;
-        @if(o_alpha)
-            texel = float4(rawIndex, rawIndex, rawIndex, 1.0);
-        @else
-            texel = float3(rawIndex, rawIndex, rawIndex);
-        @end
-    } else {
-    @end
-
     // HD-replacement debug tint (no-op when debug_tint.a == 0)
     @if(o_alpha)
         texel.rgb = lerp(texel.rgb, debug_tint.rgb, debug_tint.a);
     @else
         texel = lerp(texel, debug_tint.rgb, debug_tint.a);
-    @end
-
-    @if(o_palette[0])
-    }
     @end
 
     @if(o_alpha)
