@@ -27,9 +27,17 @@ float fogFactor : FOG;
 @if(o_shade)
     @if(o_alpha)
         float4 shade : SHADE;
-        @{update_floats(4)}
     @else
         float3 shade : SHADE;
+    @end
+@end
+@if(o_shade || o_lighting)
+    // The SHADE vertex attribute is packed whenever shade is used OR lighting is
+    // enabled (normals travel in the shade slot) — mirror that in the stride, or
+    // the input layout reads past the real vertex (exploded triangles on D3D).
+    @if(o_alpha)
+        @{update_floats(4)}
+    @else
         @{update_floats(3)}
     @end
 @end
@@ -118,6 +126,42 @@ float random(in float3 value) {
     return frac(sin(random) * 143758.5453);
 }
 
+// N64 RDP ordered-dither matrices (values 0..7); see applyRdpDither.
+static const int kDitherMagic[16] = { 0, 6, 1, 7, 4, 2, 5, 3, 3, 5, 2, 4, 7, 1, 6, 0 };
+static const int kDitherBayer[16] = { 0, 4, 1, 5, 6, 2, 7, 3, 1, 5, 0, 4, 7, 3, 6, 2 };
+
+// Integer hash for the G_CD_NOISE dither: robust per-pixel + per-frame value 0..7
+// (a sin-based hash aliases to near-constant on some GPUs, washing the noise out).
+int ditherNoise(int2 p, int frame) {
+    uint h = uint(p.x) * 1597334677u ^ uint(p.y) * 3812015801u ^ uint(frame) * 2654435761u;
+    h ^= h >> 16; h *= 2246822519u;
+    h ^= h >> 13; h *= 3266489917u;
+    h ^= h >> 16;
+    return int(h & 7u);
+}
+
+// RDP RGB dither + RGBA5551 quantization. mode: 0=magic square, 1=bayer,
+// 2=noise (temporal), 3=disable (truncate only), >=4 = off (full precision).
+float3 applyRdpDither(float3 color, float modeF, float2 fragCoord, float noiseScale, float frameCount) {
+    int mode = int(modeF + 0.5);
+    if (mode >= 4) {
+        return color;
+    }
+    float2 nativeCoord = floor(fragCoord * noiseScale);
+    float d = 0.0;
+    if (mode == 0) {
+        int2 cell = int2(nativeCoord) & 3;
+        d = float(kDitherMagic[cell.y * 4 + cell.x]);
+    } else if (mode == 1) {
+        int2 cell = int2(nativeCoord) & 3;
+        d = float(kDitherBayer[cell.y * 4 + cell.x]);
+    } else if (mode == 2) {
+        d = float(ditherNoise(int2(nativeCoord), (int) frameCount));
+    }
+    float3 q = min(floor(clamp(color * 255.0 + d, 0.0, 255.0) / 8.0), 31.0);
+    return (q * 8.0 + floor(q / 4.0)) / 255.0;
+}
+
 // Per-draw constants: texture metadata for 3-point filtering plus the combiner
 // constant operands (prim, env, keys, K4/K5, fog/grayscale colors).
 // Layout must mirror struct PerDrawCB in gfx_direct3d_common.h.
@@ -136,7 +180,8 @@ cbuffer PerDrawCB : register(b1) {
     float4 palette_params[2];
     float4 lod_params; // x = res scale, y = prim_lod_min, z = G_TD mode
     // Game-bindable register file; lockstep with PerDrawCB in gfx_direct3d_common.h
-    float4 uCustom[16];
+    float4 uCustom[32];
+    float4 debug_tint; // HD-replacement debug tint: rgb = color, a = mix amount
 }
 
 // 3 point texture filtering
@@ -518,6 +563,20 @@ PSOutput PSMain(PSInput input, float4 screenSpace : SV_Position) {
     @if(o_alpha && o_noise)
         float2 coords = screenSpace.xy * noise_scale;
         texel.a *= round(saturate(random(float3(floor(coords), noise_frame)) + texel.a - 0.5));
+    @end
+
+    // N64 RGB framebuffer dither (per-primitive G_CD_* mode in lod_params.w)
+    @if(o_alpha)
+        texel.rgb = applyRdpDither(texel.rgb, lod_params.w, screenSpace.xy, noise_scale, noise_frame);
+    @else
+        texel = applyRdpDither(texel, lod_params.w, screenSpace.xy, noise_scale, noise_frame);
+    @end
+
+    // HD-replacement debug tint (no-op when debug_tint.a == 0)
+    @if(o_alpha)
+        texel.rgb = lerp(texel.rgb, debug_tint.rgb, debug_tint.a);
+    @else
+        texel = lerp(texel, debug_tint.rgb, debug_tint.a);
     @end
 
     @if(o_alpha)
